@@ -9,53 +9,25 @@
     <title>桦尺蛾捕食实验</title>
     <link rel="preload" as="image" href="./assets/moth-light-cutout.png" />
     <link rel="preload" as="image" href="./assets/moth-dark-cutout.png" />
-    <link rel="stylesheet" href="./styles.css?v=11" />
+    <link rel="stylesheet" href="./styles.css?v=14" />
   </head>
   <body>
     <main id="app" class="app-shell">
-      <section id="startScreen" class="screen start-screen" aria-labelledby="gameTitle">
-        <div class="start-backdrop" aria-hidden="true"></div>
-        <div class="start-shade" aria-hidden="true"></div>
-        <header class="brand-row">
-          <span class="lab-mark">BIO LAB · 01</span>
-          <span class="quiet-label">课堂捕食实验</span>
-        </header>
-
-        <div class="start-grid">
-          <div class="intro-copy">
-            <p class="eyebrow">模拟知更鸟 · 观察自然选择</p>
-            <h1 id="gameTitle">桦尺蛾<br />捕食实验</h1>
-            <p class="intro-note">选择一种树干环境，在 60 秒内捕食 10 只桦尺蛾。每次捕食后，场景会自动更新。</p>
-            <div class="robin-id">
-              <img src="./assets/robin.png" alt="文档提供的知更鸟形象" />
-              <div><span>你将模拟</span><strong>一只知更鸟</strong></div>
-            </div>
-          </div>
-
-          <div class="choice-panel" aria-label="选择树干环境">
-            <div class="choice-heading">
-              <span>01</span>
-              <div><strong>选择实验环境</strong><small>两种环境均投放 10 只浅色型与 10 只深色型</small></div>
-            </div>
+      <section id="startScreen" class="screen start-screen" aria-label="选择树干环境">
+          <div class="choice-panel">
             <div class="scene-options">
               <button class="scene-card pale" type="button" data-theme="pale" aria-label="选择浅色树干">
                 <span class="scene-photo"></span>
-                <span class="scene-meta"><b>浅色树干</b><i>LIGHT BARK</i></span>
+                <span class="scene-meta"><b>浅色<br />树干</b><i>LIGHT<br />BARK</i></span>
                 <span class="scene-arrow">进入实验 ↗</span>
               </button>
               <button class="scene-card dark" type="button" data-theme="dark" aria-label="选择深色树干">
                 <span class="scene-photo"></span>
-                <span class="scene-meta"><b>深色树干</b><i>DARK BARK</i></span>
+                <span class="scene-meta"><b>深色<br />树干</b><i>DARK<br />BARK</i></span>
                 <span class="scene-arrow">进入实验 ↗</span>
               </button>
             </div>
-            <div class="rule-strip" aria-label="实验规则">
-              <span><b>60</b> 秒</span>
-              <span><b>10</b> 次捕食</span>
-              <span><b>20</b> 只初始种群</span>
-            </div>
           </div>
-        </div>
       </section>
 
       <section id="gameScreen" class="screen game-screen is-hidden" aria-label="捕食实验场景">
@@ -64,11 +36,12 @@
           <div class="scene-atmosphere" aria-hidden="true"></div>
           <div class="depth-vignette" aria-hidden="true"></div>
           <div class="reticle" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+          <p id="captureFeedback" class="capture-feedback" aria-live="polite"></p>
           <div id="sceneRefresh" class="scene-refresh" aria-hidden="true"><span>已捕食 · 场景更新中</span><b id="refreshNumber">01 / 10</b></div>
         </div>
         <header class="game-hud">
           <button id="exitButton" class="round-control" type="button" aria-label="退出本局">×</button>
-          <div class="hud-pill"><small>剩余时间</small><strong id="timer">01:00</strong></div>
+          <div class="hud-pill"><small>剩余时间</small><strong id="timer">02:00</strong></div>
           <div class="hud-title"><span><i class="render-dot"></i><em>森林观察</em> · <span id="environmentLabel">浅色树干</span></span><b>桦尺蛾捕食实验</b></div>
           <div class="hud-pill progress-pill"><small>捕食进度</small><strong><span id="captureCount">0</span> / 10</strong></div>
           <button id="soundButton" class="round-control" type="button" aria-label="切换声音">♫</button>
@@ -83,21 +56,18 @@
           <div class="ready-bird"><img src="./assets/robin.png" alt="" /></div>
           <small>准备观察</small>
           <strong id="readyText">3</strong>
-          <p>移动视角，将桦尺蛾对准中央后捕捉</p>
+          <p>靠近树干，将桦尺蛾对准中央后捕捉</p>
         </div>
 
-        <section id="resultPanel" class="result-panel is-hidden" aria-labelledby="resultTitle">
+        <section id="resultPanel" class="result-panel is-hidden" aria-labelledby="resultEnvironment">
           <div class="result-card">
-            <div class="result-photo" aria-hidden="true"></div>
             <div class="result-content">
-              <p class="eyebrow">EXPERIMENT RESULT</p>
-              <div class="result-heading"><div><h2 id="resultTitle">实验完成</h2><p id="resultSummary">你完成了 10 次捕食</p></div><span id="resultEnvironment">浅色树干</span></div>
-              <div class="result-score"><strong id="resultTotal">10</strong><span>实际捕食数量</span><i>/ 10</i></div>
+              <h2 id="resultEnvironment" class="result-environment">浅色树干</h2>
               <table>
-                <thead><tr><th>种群</th><th>初始数量</th><th>捕食数量</th><th>剩余数量</th></tr></thead>
+                <thead><tr><th>桦尺蛾类型</th><th>捕食数量</th></tr></thead>
                 <tbody>
-                  <tr><th><span class="sample-dot light"></span>浅色桦尺蛾</th><td>10</td><td id="lightCaptured">0</td><td id="lightRemaining">10</td></tr>
-                  <tr><th><span class="sample-dot dark"></span>深色桦尺蛾</th><td>10</td><td id="darkCaptured">0</td><td id="darkRemaining">10</td></tr>
+                  <tr><th><span class="sample-dot light"></span>浅色桦尺蛾</th><td id="lightCaptured">0</td></tr>
+                  <tr><th><span class="sample-dot dark"></span>深色桦尺蛾</th><td id="darkCaptured">0</td></tr>
                 </tbody>
               </table>
               <div class="result-actions">
@@ -110,8 +80,8 @@
         <p id="liveStatus" class="sr-only" aria-live="polite"></p>
       </section>
     </main>
-    <script src="./forest-scene.js?v=13"></script>
-    <script src="./game.js?v=13"></script>
+    <script src="./forest-scene.js?v=14"></script>
+    <script src="./game.js?v=14"></script>
   </body>
 </html>
 

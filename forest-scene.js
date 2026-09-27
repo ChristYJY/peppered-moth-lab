@@ -291,6 +291,9 @@
       plant(.15,-6.6,.42,23,.006);
       for(const [x,z,r] of [[-4.4,-2.5,.48],[4.8,-4.8,.52],[-2.8,-13,.39],[3.2,-15,.44],[-8,-11,.43],[8,-10,.4]])
         plant(x+rand(-.22,.22),z,r,rand(21,27),rand(-.022,.022));
+      // Place the initial camera inside a clearing, with trunks on all sides.
+      for(const [x,z,r] of [[-6.2,5.8,.44],[6.0,6.8,.47],[-2.7,11.7,.38],[3.5,12.4,.42]])
+        plant(x+rand(-.18,.18),z,r,rand(21,27),rand(-.022,.022));
       for(let i=0;i<155;i++)for(let attempt=0;attempt<35;attempt++){
         const a=rand(0,TAU),distance=i<70?rand(10,35):rand(35,74),x=Math.cos(a)*distance,z=4+Math.sin(a)*distance;
         if(plant(x,z,rand(.21,.49),rand(18,29),rand(-.038,.038)))break;

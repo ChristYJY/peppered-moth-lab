@@ -5,6 +5,10 @@
   const $$ = (selector) => [...document.querySelectorAll(selector)];
   const random = (min, max) => Math.random() * (max - min) + min;
   const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+  const CAPTURE_GOAL = 10;
+  const MOTHS_PER_TYPE = 20;
+  const TIME_LIMIT_MS = 120000;
+  const MAX_CAPTURE_DISTANCE = 15;
   const shuffle = (items) => {
     const result = [...items];
     for (let i = result.length - 1; i > 0; i -= 1) {
@@ -23,19 +27,15 @@
     captureCount: $('#captureCount'),
     environment: $('#environmentLabel'),
     reticle: $('.reticle'),
+    feedback: $('#captureFeedback'),
     refresh: $('#sceneRefresh'),
     refreshNumber: $('#refreshNumber'),
     ready: $('#readyOverlay'),
     readyText: $('#readyText'),
     result: $('#resultPanel'),
-    resultTitle: $('#resultTitle'),
-    resultSummary: $('#resultSummary'),
     resultEnvironment: $('#resultEnvironment'),
-    resultTotal: $('#resultTotal'),
     lightCaptured: $('#lightCaptured'),
-    lightRemaining: $('#lightRemaining'),
     darkCaptured: $('#darkCaptured'),
-    darkRemaining: $('#darkRemaining'),
     status: $('#liveStatus'),
     joystick: $('#joystick'),
     knob: $('#joystickKnob'),
@@ -66,8 +66,8 @@
 
   function createPopulation() {
     state.moths = [];
-    for (let i = 0; i < 10; i += 1) state.moths.push({ id: 'light-' + i, type: 'light', alive: true });
-    for (let i = 0; i < 10; i += 1) state.moths.push({ id: 'dark-' + i, type: 'dark', alive: true });
+    for (let i = 0; i < MOTHS_PER_TYPE; i += 1) state.moths.push({ id: 'light-' + i, type: 'light', alive: true });
+    for (let i = 0; i < MOTHS_PER_TYPE; i += 1) state.moths.push({ id: 'dark-' + i, type: 'dark', alive: true });
   }
 
   async function countdown(roundId) {
@@ -86,9 +86,9 @@
     if (roundId !== state.roundId) return;
     els.ready.classList.add('is-hidden');
     state.running = true;
-    state.deadline = performance.now() + 60000;
+    state.deadline = performance.now() + TIME_LIMIT_MS;
     state.timerId = window.setInterval(updateTimer, 100);
-    els.status.textContent = '实验开始，剩余时间 60 秒。';
+    els.status.textContent = '实验开始，剩余时间 2 分钟。';
   }
 
   function startGame(theme = state.theme) {
@@ -101,7 +101,9 @@
     state.transitioning = false;
     createPopulation();
     els.captureCount.textContent = '0';
-    els.timer.textContent = '01:00';
+    els.timer.textContent = '02:00';
+    els.feedback.textContent = '';
+    els.feedback.classList.remove('show');
     els.timer.parentElement.classList.remove('urgent');
     els.environment.textContent = themeLabel();
     els.result.classList.add('is-hidden');
@@ -132,7 +134,14 @@
     if (!target || target.distance > threshold) {
       pulseReticle('miss');
       playSound('miss');
-      els.status.textContent = '没有捕捉到，请将桦尺蛾对准中央。';
+      showFeedback('请将桦尺蛾对准中央');
+      return;
+    }
+    const treeDistance = Math.hypot(renderer.camera.position[0] - target.moth.world[0], renderer.camera.position[2] - target.moth.world[2]);
+    if (treeDistance > MAX_CAPTURE_DISTANCE) {
+      pulseReticle('miss');
+      playSound('miss');
+      showFeedback('距离太远，请靠近树干');
       return;
     }
     const moth = target.moth;
@@ -143,8 +152,8 @@
     burstParticles(moth.type);
     playSound('hit');
     els.captureCount.textContent = String(state.totalCaptured);
-    els.status.textContent = '捕食成功，已捕食 ' + state.totalCaptured + ' 只。场景正在更新。';
-    if (state.totalCaptured >= 10) {
+    showFeedback('已捕食 ' + state.totalCaptured + ' / ' + CAPTURE_GOAL);
+    if (state.totalCaptured >= CAPTURE_GOAL) {
       state.running = false;
       window.setTimeout(() => finishGame('complete'), 520);
       return;
@@ -174,16 +183,19 @@
     state.roundId += 1;
     state.running = false;
     state.transitioning = false;
-    els.resultTitle.textContent = reason === 'complete' ? '实验完成' : '时间到';
-    els.resultSummary.textContent = reason === 'complete' ? '你完成了 10 次捕食' : '本次共捕食 ' + state.totalCaptured + ' 只桦尺蛾';
     els.resultEnvironment.textContent = themeLabel();
-    els.resultTotal.textContent = String(state.totalCaptured);
     els.lightCaptured.textContent = String(state.captured.light);
     els.darkCaptured.textContent = String(state.captured.dark);
-    els.lightRemaining.textContent = String(10 - state.captured.light);
-    els.darkRemaining.textContent = String(10 - state.captured.dark);
     els.result.classList.remove('is-hidden');
-    els.status.textContent = '实验结束。浅色桦尺蛾剩余 ' + (10 - state.captured.light) + ' 只，深色桦尺蛾剩余 ' + (10 - state.captured.dark) + ' 只。';
+    els.status.textContent = (reason === 'complete' ? '实验完成。' : '时间到。') + '浅色桦尺蛾捕食 ' + state.captured.light + ' 只，深色桦尺蛾捕食 ' + state.captured.dark + ' 只。';
+  }
+
+  function showFeedback(message) {
+    els.feedback.textContent = message;
+    els.feedback.classList.add('show');
+    els.status.textContent = message;
+    clearTimeout(state.feedbackTimer);
+    state.feedbackTimer = window.setTimeout(() => els.feedback.classList.remove('show'), 1400);
   }
 
   function pulseReticle(name) {
@@ -357,10 +369,10 @@
           started: true,
           renderMode: 'WebGL 3D',
           environment: input.environment,
-          initialLightMoths: 10,
-          initialDarkMoths: 10,
-          targetCaptures: 10,
-          timeLimitSeconds: 60
+          initialLightMoths: MOTHS_PER_TYPE,
+          initialDarkMoths: MOTHS_PER_TYPE,
+          targetCaptures: CAPTURE_GOAL,
+          timeLimitSeconds: TIME_LIMIT_MS / 1000
         };
       }
     };
