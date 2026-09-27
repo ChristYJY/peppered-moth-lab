@@ -9,7 +9,7 @@
     <title>桦尺蛾捕食实验</title>
     <link rel="preload" as="image" href="./assets/forest-light-card.jpg" />
     <link rel="preload" as="image" href="./assets/forest-dark-card.jpg" />
-    <link rel="stylesheet" href="./styles.css?v=17" />
+    <link rel="stylesheet" href="./styles.css?v=18" />
   </head>
   <body>
     <main id="app" class="app-shell">
@@ -57,6 +57,10 @@
           <small>准备观察</small>
           <strong id="readyText">3</strong>
           <p>靠近树干，将桦尺蛾对准中央后捕捉</p>
+          <div id="readyActions" class="ready-actions is-hidden">
+            <button id="retryLoadButton" type="button">重试加载</button>
+            <button id="backToStartButton" type="button">返回选景</button>
+          </div>
         </div>
 
         <section id="resultPanel" class="result-panel is-hidden" aria-labelledby="resultEnvironment">
@@ -80,8 +84,8 @@
         <p id="liveStatus" class="sr-only" aria-live="polite"></p>
       </section>
     </main>
-    <script src="./forest-scene.js?v=14"></script>
-    <script src="./game.js?v=15"></script>
+    <script src="./forest-scene.js?v=18"></script>
+    <script src="./game.js?v=18"></script>
   </body>
 </html>
 

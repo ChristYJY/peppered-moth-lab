@@ -204,8 +204,9 @@
       triangle(ground,[130,-.06,-130],[-130,-.06,130],[130,-.06,130],[1,1,1]);
       this.ground=this.mesh(ground);this.identity=ident();this.normalIdentity=new Float32Array([1,0,0,0,1,0,0,0,1]);
       this.textureLoads={};
-      this.textures={light:this.texture('./assets/moth-light-cutout.png'),dark:this.texture('./assets/moth-dark-cutout.png'),
-        bark:this.texture('./assets/bark-clean.png')};
+      this.mothTextureUrls={light:'./assets/moth-light-game.png',dark:'./assets/moth-dark-game.png'};
+      this.textures={light:this.texture(this.mothTextureUrls.light),dark:this.texture(this.mothTextureUrls.dark),
+        bark:this.texture('./assets/bark-game.jpg')};
       gl.enable(gl.DEPTH_TEST);gl.depthFunc(gl.LEQUAL);
       this.animate=this.animate.bind(this);requestAnimationFrame(this.animate);
     }
@@ -233,15 +234,39 @@
       gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
       gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
       this.textureLoads[url]=new Promise(resolve=>{
-        const image=new Image();let attempts=0;
-        image.onload=()=>{gl.bindTexture(gl.TEXTURE_2D,t);gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,true);gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL,false);
-          gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,image);resolve(true);};
-        image.onerror=()=>{if(++attempts<3){window.setTimeout(()=>{image.src=url+'?retry='+attempts;},350);}else resolve(false);};
-        image.src=url;
+        let image,timeout,attempts=0,finished=false;
+        const fail=()=>{
+          if(finished)return;
+          window.clearTimeout(timeout);image.onload=image.onerror=null;
+          if(attempts<2)window.setTimeout(load,300);
+          else{finished=true;resolve(false);}
+        };
+        const load=()=>{
+          if(finished)return;
+          attempts+=1;image=new Image();
+          image.onload=()=>{
+            if(finished)return;
+            window.clearTimeout(timeout);
+            try{gl.bindTexture(gl.TEXTURE_2D,t);gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,true);gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL,false);
+              gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,image);finished=true;resolve(true);}
+            catch(_){fail();}
+          };
+          image.onerror=fail;
+          timeout=window.setTimeout(fail,8000);
+          image.src=url+(attempts>1?'?retry='+attempts:'');
+        };
+        load();
       });
       return t;
     }
-    whenMothsReady(){return this.supported?Promise.all(['./assets/moth-light-cutout.png','./assets/moth-dark-cutout.png'].map(url=>this.textureLoads[url])).then(results=>results.every(Boolean)):Promise.resolve(false);}
+    whenMothsReady(){return this.supported?Promise.all(Object.values(this.mothTextureUrls).map(url=>this.textureLoads[url])).then(results=>results.every(Boolean)):Promise.resolve(false);}
+    reloadMoths(){
+      if(!this.supported)return;
+      for(const [type,url] of Object.entries(this.mothTextureUrls)){
+        this.gl.deleteTexture(this.textures[type]);
+        this.textures[type]=this.texture(url);
+      }
+    }
     direction(){const c=Math.cos(this.camera.pitch);return [Math.sin(this.camera.yaw)*c,Math.sin(this.camera.pitch),-Math.cos(this.camera.yaw)*c];}
     updateViewProjection(){
       const eye=this.camera.position,forward=this.direction(),right=norm(cross(forward,[0,1,0])),up=cross(right,forward);

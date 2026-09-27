@@ -32,6 +32,7 @@
     refreshNumber: $('#refreshNumber'),
     ready: $('#readyOverlay'),
     readyText: $('#readyText'),
+    readyActions: $('#readyActions'),
     result: $('#resultPanel'),
     resultEnvironment: $('#resultEnvironment'),
     lightCaptured: $('#lightCaptured'),
@@ -72,12 +73,21 @@
 
   async function countdown(roundId) {
     els.ready.classList.remove('is-hidden');
+    els.ready.classList.add('is-loading');
+    els.ready.classList.remove('is-error');
+    els.readyActions.classList.add('is-hidden');
     els.readyText.textContent = '正在载入桦尺蛾素材';
     if (!await renderer.whenMothsReady()) {
-      els.readyText.textContent = '桦尺蛾素材载入失败，请刷新页面重试';
+      if (roundId !== state.roundId) return;
+      els.ready.classList.remove('is-loading');
+      els.ready.classList.add('is-error');
+      els.readyActions.classList.remove('is-hidden');
+      els.readyText.textContent = renderer.supported ? '素材加载超时，请重试' : '当前浏览器不支持三维场景';
       els.status.textContent = els.readyText.textContent;
       return;
     }
+    if (roundId !== state.roundId) return;
+    els.ready.classList.remove('is-loading');
     for (const value of ['3', '2', '1', '开始']) {
       if (roundId !== state.roundId) return;
       els.readyText.textContent = value;
@@ -302,6 +312,12 @@
     }
   }));
   $('#exitButton').addEventListener('click', returnToStart);
+  $('#backToStartButton').addEventListener('click', returnToStart);
+  $('#retryLoadButton').addEventListener('click', () => {
+    if (!renderer || !renderer.supported) return;
+    renderer.reloadMoths();
+    countdown(++state.roundId);
+  });
   $('#replayButton').addEventListener('click', () => startGame(state.theme));
   $('#changeSceneButton').addEventListener('click', returnToStart);
   els.captureButton.addEventListener('click', capture);
