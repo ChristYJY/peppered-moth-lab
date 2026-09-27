@@ -257,11 +257,11 @@
         - Number(state.keys.has('ArrowLeft') || state.keys.has('KeyA'));
       const length = Math.hypot(forward, strafe) || 1;
       if (forward || strafe || state.joy.pointerId !== null) {
-        renderer.move((forward / length * 3.1 - state.joy.y * 2.6) * seconds, strafe / length * 3.1 * seconds);
+        renderer.move((forward / length * 3.1 - state.joy.y * 3.8) * seconds, strafe / length * 3.1 * seconds);
       }
     }
     if (state.joy.pointerId !== null) {
-      renderer.rotate(-state.joy.x * seconds * 250, 0);
+      renderer.rotate(-state.joy.x * seconds * 430, 0);
     }
     requestAnimationFrame(controlFrame);
   }

@@ -137,14 +137,14 @@
         direct=max(dot(N,sun),0.0);
         float birch=noise(vec2(vUv.x*48.0,vWorld.y*23.0)+uSeed);
         float rough=fbm(vec2(vUv.x*34.0,vWorld.y*3.1)+uSeed*3.0);
-        vec3 pale=mix(vec3(.91,.90,.85),detail*vec3(1.03,1.02,.98),.71)*(.96+.08*birch);
+        vec3 pale=mix(vec3(.88,.87,.83),detail*vec3(1.04,1.03,1.0),.55)*(.98+.04*birch);
         float scars=smoothstep(.67,.88,noise(vec2(vUv.x*8.0+uSeed*3.0,vWorld.y*20.0)));
         pale=mix(pale,vec3(.22,.22,.19),scars*.18);
         vec3 dark=detail*(.88+.22*rough)+vec3(.015,.019,.020);
         color=mix(pale,dark,uTheme)*vColor;
         float moss=(1.0-smoothstep(.12,1.8,vWorld.y))*smoothstep(.35,.66,rough);
         color=mix(color,vec3(.19,.25,.10),moss*.52);
-        color*=.46+.45*direct+.15*dapple;
+        color*=mix(.70+.32*direct+.08*dapple,.46+.45*direct+.15*dapple,uTheme);
       }else if(uKind<1.5){
         float patch=fbm(vWorld.xz*.47),grain=noise(vWorld.xz*39.0);
         float path=1.0-smoothstep(.55,2.7,abs(vWorld.x-sin(vWorld.z*.10)*2.0));
@@ -392,7 +392,7 @@
         const tree=target.t,slot=occupied.get(target.i)||0;occupied.set(target.i,slot+1);
         const y=moth===anchor?2.95:1.8+slot*.9+rand(0,.3);
         const angle=Math.atan2(this.camera.position[2]-tree.z,this.camera.position[0]-tree.x)+rand(-.24,.24);
-        moth.treeIndex=target.i;moth.scale=rand(.59,.75);moth.width=Math.min(.64*moth.scale*2.06,tree.radius*2.15);
+        moth.treeIndex=target.i;moth.scale=rand(.47,.58);moth.width=Math.min(.64*moth.scale*2.06,tree.radius*1.45);
         const h=moth.width/2.06,rotation=rand(-.12,.12),cs=Math.cos(rotation),sn=Math.sin(rotation);
         moth.world=surface(tree,angle,y/tree.height,.018);
         moth.normal=norm([Math.cos(angle)*Math.cos(tree.lean),Math.cos(angle)*Math.sin(tree.lean),Math.sin(angle)]);
