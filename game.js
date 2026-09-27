@@ -43,7 +43,7 @@
     soundButton: $('#soundButton')
   };
 
-  const renderer = new ForestScene(els.canvas);
+  let renderer;
   const state = {
     theme: 'pale',
     moths: [],
@@ -92,6 +92,8 @@
   }
 
   function startGame(theme = state.theme) {
+    // Keep large 3D textures off the network until a scene is actually selected.
+    if (!renderer) renderer = new ForestScene(els.canvas);
     clearInterval(state.timerId);
     state.keys.clear();
     state.theme = theme;
@@ -262,7 +264,7 @@
   function controlFrame(now) {
     const seconds = clamp((now - state.lastControlFrame) / 1000, 0, .05);
     state.lastControlFrame = now;
-    if (!els.game.classList.contains('is-hidden')) {
+    if (renderer && !els.game.classList.contains('is-hidden')) {
       const forward = Number(state.keys.has('ArrowUp') || state.keys.has('KeyW'))
         - Number(state.keys.has('ArrowDown') || state.keys.has('KeyS'));
       const strafe = Number(state.keys.has('ArrowRight') || state.keys.has('KeyD'))
@@ -272,7 +274,7 @@
         renderer.move((forward / length * 3.1 - state.joy.y * 3.8) * seconds, strafe / length * 3.1 * seconds);
       }
     }
-    if (state.joy.pointerId !== null) {
+    if (renderer && state.joy.pointerId !== null) {
       renderer.rotate(-state.joy.x * seconds * 430, 0);
     }
     requestAnimationFrame(controlFrame);
@@ -291,6 +293,14 @@
   }
 
   $$('.scene-card').forEach((button) => button.addEventListener('click', () => startGame(button.dataset.theme)));
+  $$('.scene-photo img').forEach((img) => img.addEventListener('error', () => {
+    if (img.dataset.fallback) {
+      img.src = img.dataset.fallback;
+      delete img.dataset.fallback;
+    } else {
+      img.hidden = true;
+    }
+  }));
   $('#exitButton').addEventListener('click', returnToStart);
   $('#replayButton').addEventListener('click', () => startGame(state.theme));
   $('#changeSceneButton').addEventListener('click', returnToStart);
@@ -312,13 +322,13 @@
     const dy = event.clientY - state.drag.y;
     state.drag.x = event.clientX;
     state.drag.y = event.clientY;
-    renderer.rotate(dx, dy);
+    if (renderer) renderer.rotate(dx, dy);
   });
   els.viewport.addEventListener('pointerup', () => { state.drag = null; });
   els.viewport.addEventListener('pointercancel', () => { state.drag = null; });
   els.viewport.addEventListener('wheel', (event) => {
     event.preventDefault();
-    renderer.zoom(event.deltaY * .018);
+    if (renderer) renderer.zoom(event.deltaY * .018);
   }, { passive: false });
 
   els.joystick.addEventListener('pointerdown', (event) => {
@@ -346,7 +356,7 @@
   });
   window.addEventListener('keyup', (event) => state.keys.delete(event.code));
   window.addEventListener('blur', () => state.keys.clear());
-  window.addEventListener('resize', () => renderer.resize());
+  window.addEventListener('resize', () => { if (renderer) renderer.resize(); });
   requestAnimationFrame(controlFrame);
 
   const modelContext = document.modelContext;
