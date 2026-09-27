@@ -252,7 +252,7 @@
             catch(_){fail();}
           };
           image.onerror=fail;
-          timeout=window.setTimeout(fail,8000);
+          timeout=window.setTimeout(fail,12000);
           image.src=url+(attempts>1?'?retry='+attempts:'');
         };
         load();
