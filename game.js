@@ -154,7 +154,7 @@
 
   function transitionScene() {
     state.transitioning = true;
-    els.refreshNumber.textContent = String(state.totalCaptured + 1).padStart(2, '0') + ' / 10';
+    els.refreshNumber.textContent = String(state.totalCaptured).padStart(2, '0') + ' / 10';
     els.refresh.classList.add('show');
     els.canvas.classList.add('is-switching');
     window.setTimeout(() => {
