@@ -3,7 +3,7 @@
 (() => {
   'use strict';
   const TAU = Math.PI * 2;
-  const SEGMENTS = 24, RINGS = 20;
+  const SEGMENTS = 32, RINGS = 24;
   const rand = (a, b) => a + Math.random() * (b - a);
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
   const norm = (v) => { const n = Math.hypot(...v) || 1; return v.map(x => x / n); };
@@ -28,10 +28,12 @@
     const a=u*TAU;
     const top=clamp((v-.62)/.38,0,1),crown=top*top*(3-2*top);
     const taper=(1.14-.38*v)*(1-.965*crown)+.055*Math.exp(-v*32);
-    const radius=taper*(1+.025*Math.sin(a*5+v*9+seed)+.012*Math.sin(a*9-v*17+seed));
-    return [Math.cos(a)*radius+.035*(Math.sin(v*4+seed)-Math.sin(seed)),v,
-      Math.sin(a)*radius+.025*(Math.sin(v*5+seed*2)-Math.sin(seed*2))];
+    const radius=taper*(1+.045*Math.sin(a*5+v*9+seed)+.024*Math.sin(a*11-v*16+seed));
+    const bend=trunkBend(v,seed);
+    return [Math.cos(a)*radius+bend[0],v,Math.sin(a)*radius+bend[1]];
   }
+  function trunkBend(v,seed){return [1.12*v*(Math.sin(v*2.6+seed)-Math.sin(seed)),
+    .72*v*(Math.sin(v*2.2+seed*.7)-Math.sin(seed*.7))];}
   function trunkData(seed) {
     const d=data();
     const put=(u,v)=>{const p=trunkVertex(u,v,seed);vertex(d,p,norm([Math.cos(u*TAU),.02,Math.sin(u*TAU)]),[u,v]);};
@@ -51,6 +53,7 @@
     const x=p[0]*tree.radius,y=p[1]*tree.height;
     return [tree.x+c*x-s*y,y*c+s*x-.12,tree.z+p[2]*tree.radius];
   }
+  function trunkCenter(tree,t){const b=trunkBend(t,tree.seed);return treeTransform(tree,[b[0],t,b[1]]);}
   function surface(tree,angle,t,offset=0) {
     // Barycentric interpolation follows exactly the diagonal used by trunkData.
     const u=((angle/TAU)%1+1)%1*SEGMENTS,v=clamp(t,0,.99999)*RINGS;
@@ -120,20 +123,23 @@
       vec3 color=vColor;float alpha=1.0;
       if(uKind<.5){
         // Continuous bark detail; no mirrored full-forest photographs on trunks.
-        // Sample only the central uninterrupted trunk in the supplied references.
-        // Edge cross-fading keeps the bark continuous without mirrored markings.
-        vec2 tile=fract(vec2(vUv.x*4.0+uSeed*.13,vWorld.y*.11+uSeed*.31))*.80;
-        vec2 uv=vec2(.582+tile.x*.036,.22+tile.y*.53);
+        // Both halves are the original bark samples from the lesson document.
+        // The pale lower half avoids moths baked into the supplied photograph.
+        vec2 tile=fract(vec2(vUv.x*2.4+uSeed*.13,vWorld.y*mix(.85,.43,uTheme)+uSeed*.31));
+        vec2 uv=vec2(mix(.035,.525,uTheme)+tile.x*mix(.43,.445,uTheme),
+          .035+tile.y*mix(.43,.925,uTheme));
         vec3 detail=texture2D(uTexture,uv).rgb;
-        vec2 seam=smoothstep(vec2(0),vec2(.20),tile);
-        vec3 wrapX=texture2D(uTexture,uv+vec2(.0288,0)).rgb;
-        vec3 wrapY=texture2D(uTexture,uv+vec2(0,.424)).rgb;
-        vec3 corner=texture2D(uTexture,uv+vec2(.0288,.424)).rgb;
-        detail=mix(mix(corner,wrapY,seam.x),mix(wrapX,detail,seam.x),seam.y);
-        float grain=dot(detail,vec3(.30,.59,.11));
+        float height0=dot(detail,vec3(.30,.59,.11));
+        float bumpX=dot(texture2D(uTexture,uv+vec2(.002,0)).rgb,vec3(.30,.59,.11))-height0;
+        float bumpY=dot(texture2D(uTexture,uv+vec2(0,.002)).rgb,vec3(.30,.59,.11))-height0;
+        vec3 tangent=normalize(cross(vec3(0,1,0),N));
+        N=normalize(N+tangent*bumpX*1.8+normalize(cross(N,tangent))*bumpY*1.8);
+        direct=max(dot(N,sun),0.0);
         float birch=noise(vec2(vUv.x*48.0,vWorld.y*23.0)+uSeed);
         float rough=fbm(vec2(vUv.x*34.0,vWorld.y*3.1)+uSeed*3.0);
-        vec3 pale=detail*vec3(1.03,1.02,.98)*(.96+.08*birch);
+        vec3 pale=mix(vec3(.91,.90,.85),detail*vec3(1.03,1.02,.98),.71)*(.96+.08*birch);
+        float scars=smoothstep(.67,.88,noise(vec2(vUv.x*8.0+uSeed*3.0,vWorld.y*20.0)));
+        pale=mix(pale,vec3(.22,.22,.19),scars*.18);
         vec3 dark=detail*(.88+.22*rough)+vec3(.015,.019,.020);
         color=mix(pale,dark,uTheme)*vColor;
         float moss=(1.0-smoothstep(.12,1.8,vWorld.y))*smoothstep(.35,.66,rough);
@@ -197,8 +203,9 @@
       const ground=data();triangle(ground,[-130,-.06,-130],[-130,-.06,130],[130,-.06,-130],[1,1,1]);
       triangle(ground,[130,-.06,-130],[-130,-.06,130],[130,-.06,130],[1,1,1]);
       this.ground=this.mesh(ground);this.identity=ident();this.normalIdentity=new Float32Array([1,0,0,0,1,0,0,0,1]);
+      this.textureLoads={};
       this.textures={light:this.texture('./assets/moth-light-cutout.png'),dark:this.texture('./assets/moth-dark-cutout.png'),
-        paleBark:this.texture('./assets/forest-light-reference.jpg'),darkBark:this.texture('./assets/forest-dark-reference.png')};
+        bark:this.texture('./assets/bark-clean.png')};
       gl.enable(gl.DEPTH_TEST);gl.depthFunc(gl.LEQUAL);
       this.animate=this.animate.bind(this);requestAnimationFrame(this.animate);
     }
@@ -225,9 +232,16 @@
       gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,1,1,0,gl.RGBA,gl.UNSIGNED_BYTE,new Uint8Array([120,130,110,url.includes('moth-')?0:255]));
       gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
       gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
-      const image=new Image();image.onload=()=>{gl.bindTexture(gl.TEXTURE_2D,t);gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,true);gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL,false);
-        gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,image);};image.src=url;return t;
+      this.textureLoads[url]=new Promise(resolve=>{
+        const image=new Image();let attempts=0;
+        image.onload=()=>{gl.bindTexture(gl.TEXTURE_2D,t);gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,true);gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL,false);
+          gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,image);resolve(true);};
+        image.onerror=()=>{if(++attempts<3){window.setTimeout(()=>{image.src=url+'?retry='+attempts;},350);}else resolve(false);};
+        image.src=url;
+      });
+      return t;
     }
+    whenMothsReady(){return this.supported?Promise.all(['./assets/moth-light-cutout.png','./assets/moth-dark-cutout.png'].map(url=>this.textureLoads[url])).then(results=>results.every(Boolean)):Promise.resolve(false);}
     direction(){const c=Math.cos(this.camera.pitch);return [Math.sin(this.camera.yaw)*c,Math.sin(this.camera.pitch),-Math.cos(this.camera.yaw)*c];}
     updateViewProjection(){
       const eye=this.camera.position,forward=this.direction(),right=norm(cross(forward,[0,1,0])),up=cross(right,forward);
@@ -404,7 +418,7 @@
         let x=clamp(this.camera.position[0]+(Math.sin(this.camera.yaw)*forward+Math.cos(this.camera.yaw)*strafe)/steps,-16,16);
         let z=clamp(this.camera.position[2]+(-Math.cos(this.camera.yaw)*forward+Math.sin(this.camera.yaw)*strafe)/steps,-23,24);
         for(let pass=0;pass<3;pass++)for(const tree of this.trees){
-          const center=treeTransform(tree,[0,(this.camera.position[1]+.12)/tree.height,0]);
+          const center=trunkCenter(tree,(this.camera.position[1]+.12)/tree.height);
           const dx=x-center[0],dz=z-center[2],r=tree.radius*1.22+.44,dist=Math.hypot(dx,dz);
           if(dist<r){x=center[0]+(dist>.0001?dx/dist:1)*r;z=center[2]+(dist>.0001?dz/dist:0)*r;}
         }
@@ -431,12 +445,12 @@
       gl.enable(gl.DEPTH_TEST);gl.depthMask(true);gl.useProgram(this.main.program);
       gl.uniformMatrix4fv(this.main.uVP,false,this.viewProjection);gl.uniform3fv(this.main.uCamera,this.camera.position);
       gl.uniform3fv(this.main.uFog,fog);gl.uniform1f(this.main.uTheme,dark?1:0);gl.uniform1i(this.main.uTexture,0);
-      gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,this.textures[dark?'darkBark':'paleBark']);
+      gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,this.textures.bark);
       this.draw(this.ground,1);
       gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.depthMask(false);this.draw(this.shadows,3);gl.depthMask(true);gl.disable(gl.BLEND);
       for(const tree of this.trees){
         const center=[tree.x-Math.sin(tree.lean)*tree.height*.5,tree.height*.5,tree.z];
-        const ext=[tree.radius*1.3+Math.abs(Math.sin(tree.lean))*tree.height*.5,tree.height*.5+.3,tree.radius*1.3];
+        const ext=[tree.radius*1.3+Math.abs(Math.sin(tree.lean))*tree.height*.5+.7,tree.height*.5+.3,tree.radius*1.3+.5];
         if(this.frustum.some(p=>dot(p,center)+p[3]+Math.abs(p[0])*ext[0]+Math.abs(p[1])*ext[1]+Math.abs(p[2])*ext[2]<0))continue;
         this.draw(this.trunks[tree.variant],0,tree.model,tree.normal,tree.seed+tree.x*.37+tree.z*.13);
       }
@@ -466,7 +480,8 @@
         const t=clamp(-(a[0]*ray[0]+a[2]*ray[2])/den,0,1),y=a[1]+ray[1]*t;
         if(t<=.001||t>=.997||y<0||y>tree.height)return false;
         const radius=tree.radius*(1.18-.38*y/tree.height);
-        return Math.hypot(a[0]+ray[0]*t,a[2]+ray[2]*t)<radius;
+        const bend=trunkBend(y/tree.height,tree.seed);
+        return Math.hypot(a[0]+ray[0]*t-bend[0]*tree.radius,a[2]+ray[2]*t-bend[1]*tree.radius)<radius;
       });
     }
     nearestMoth(moths){return moths.filter(m=>m.alive&&m.world&&this.mothVisible(m)).map(moth=>{const point=this.project(moth.world);return point?{moth,point,distance:Math.hypot(point.x-this.canvas.clientWidth/2,point.y-this.canvas.clientHeight/2)}:null;}).filter(Boolean).sort((a,b)=>a.distance-b.distance)[0]||null;}

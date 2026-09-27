@@ -72,6 +72,12 @@
 
   async function countdown(roundId) {
     els.ready.classList.remove('is-hidden');
+    els.readyText.textContent = '正在载入桦尺蛾素材';
+    if (!await renderer.whenMothsReady()) {
+      els.readyText.textContent = '桦尺蛾素材载入失败，请刷新页面重试';
+      els.status.textContent = els.readyText.textContent;
+      return;
+    }
     for (const value of ['3', '2', '1', '开始']) {
       if (roundId !== state.roundId) return;
       els.readyText.textContent = value;
