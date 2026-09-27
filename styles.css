@@ -21,9 +21,9 @@ button:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
 .start-screen { display: grid; place-items: center; padding: clamp(16px, 3vw, 48px); color: var(--ink); background: radial-gradient(ellipse at center, #14231b 0%, #08130d 72%); }
 .choice-panel { width: min(100%, 980px); }
 .scene-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: clamp(16px, 3vw, 36px); }
-.scene-card { min-width: 0; height: min(650px, calc(100svh - 48px)); min-height: 340px; display: flex; flex-direction: column; padding: 0; overflow: hidden; text-align: left; color: var(--ink); border: 2px solid rgba(227, 236, 222, .25); border-radius: 32px; background: #17231c; cursor: pointer; transition: transform .25s ease, border-color .25s ease, background .25s ease; }
+.scene-card { min-width: 0; height: min(650px, calc(100svh - 48px)); min-height: 340px; display: flex; flex-direction: column; align-items: stretch; padding: 0; overflow: hidden; text-align: left; color: var(--ink); border: 2px solid rgba(227, 236, 222, .25); border-radius: 32px; background: #17231c; cursor: pointer; transition: transform .25s ease, border-color .25s ease, background .25s ease; }
 .scene-card:hover { transform: translateY(-5px); border-color: rgba(227, 236, 222, .62); background: #1b2b20; }
-.scene-photo { display: block; height: 54%; flex: none; overflow: hidden; background-position: center 45%; background-size: cover; filter: saturate(.88) contrast(1.04); transition: transform .45s ease, filter .45s ease; }
+.scene-photo { display: block; width: 100%; min-width: 0; height: 54%; flex: none; overflow: hidden; background-position: center 45%; background-size: cover; filter: saturate(.88) contrast(1.04); transition: transform .45s ease, filter .45s ease; }
 .scene-photo img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: center 45%; }
 .scene-photo img[hidden] { display: none; }
 .scene-card.pale .scene-photo { background-image: url("./assets/forest-light-preview.jpg"); }
