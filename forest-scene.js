@@ -34,16 +34,16 @@
   }
   function trunkBend(v,seed){return [1.12*v*(Math.sin(v*2.6+seed)-Math.sin(seed)),
     .72*v*(Math.sin(v*2.2+seed*.7)-Math.sin(seed*.7))];}
-  function trunkData(seed) {
+  function trunkData(seed,segments=SEGMENTS,rings=RINGS) {
     const d=data();
     const put=(u,v)=>{const p=trunkVertex(u,v,seed);vertex(d,p,norm([Math.cos(u*TAU),.02,Math.sin(u*TAU)]),[u,v]);};
-    for(let y=0;y<RINGS;y++)for(let x=0;x<SEGMENTS;x++) {
-      const u=x/SEGMENTS,v=y/RINGS,U=(x+1)/SEGMENTS,V=(y+1)/RINGS;
+    for(let y=0;y<rings;y++)for(let x=0;x<segments;x++) {
+      const u=x/segments,v=y/rings,U=(x+1)/segments,V=(y+1)/rings;
       put(u,v);put(U,v);put(u,V);put(u,V);put(U,v);put(U,V);
     }
     // Closed ends prevent sky showing through when looking along a trunk.
-    for(const v of [0,1])for(let x=0;x<SEGMENTS;x++) {
-      const a=trunkVertex(x/SEGMENTS,v,seed),b=trunkVertex((x+1)/SEGMENTS,v,seed);
+    for(const v of [0,1])for(let x=0;x<segments;x++) {
+      const a=trunkVertex(x/segments,v,seed),b=trunkVertex((x+1)/segments,v,seed);
       triangle(d,[0,v,0],a,b,[1,1,1]);
     }
     return d;
@@ -54,15 +54,23 @@
     return [tree.x+c*x-s*y,y*c+s*x-.12,tree.z+p[2]*tree.radius];
   }
   function trunkCenter(tree,t){const b=trunkBend(t,tree.seed);return treeTransform(tree,[b[0],t,b[1]]);}
+  const trunkGrids=new Map();
+  function trunkGrid(seed){
+    if(!trunkGrids.has(seed)){
+      const grid=[];
+      for(let y=0;y<=RINGS;y++)for(let x=0;x<=SEGMENTS;x++)grid.push(trunkVertex(x/SEGMENTS,y/RINGS,seed));
+      trunkGrids.set(seed,grid);
+    }
+    return trunkGrids.get(seed);
+  }
   function surface(tree,angle,t,offset=0) {
     // Barycentric interpolation follows exactly the diagonal used by trunkData.
     const u=((angle/TAU)%1+1)%1*SEGMENTS,v=clamp(t,0,.99999)*RINGS;
     const x=Math.floor(u),y=Math.floor(v),a=u-x,b=v-y;
-    const A=trunkVertex(x/SEGMENTS,y/RINGS,tree.seed);
-    const B=trunkVertex((x+1)/SEGMENTS,y/RINGS,tree.seed);
-    const C=trunkVertex(x/SEGMENTS,(y+1)/RINGS,tree.seed);
-    const D=trunkVertex((x+1)/SEGMENTS,(y+1)/RINGS,tree.seed);
-    const p=a+b<=1?add(add(A,sub(B,A),a),sub(C,A),b):add(add(D,sub(C,D),1-a),sub(B,D),1-b);
+    const grid=trunkGrid(tree.seed),first=y*(SEGMENTS+1)+x;
+    const A=grid[first],B=grid[first+1],C=grid[first+SEGMENTS+1],D=grid[first+SEGMENTS+2];
+    const p=[0,0,0];
+    for(let i=0;i<3;i++)p[i]=a+b<=1?A[i]+(B[i]-A[i])*a+(C[i]-A[i])*b:D[i]+(C[i]-D[i])*(1-a)+(B[i]-D[i])*(1-b);
     p[0]+=Math.cos(angle)*offset/tree.radius;
     p[2]+=Math.sin(angle)*offset/tree.radius;
     return treeTransform(tree,p);
@@ -119,7 +127,8 @@
     void main(){
       vec3 N=normalize(vNormal),sun=normalize(vec3(-.48,.79,.38));
       float direct=max(dot(N,sun),0.0),hemi=.5+.5*N.y;
-      float dapple=smoothstep(.32,.76,fbm(vWorld.xz*.38+vWorld.y*.16));
+      float dapple=smoothstep(.32,.76,noise(vWorld.xz*.38+vWorld.y*.16));
+      float surfaceLight=(.82+.18*direct)*(.97+.03*dapple);
       vec3 color=vColor;float alpha=1.0;
       if(uKind<.5){
         // Continuous bark detail; no mirrored full-forest photographs on trunks.
@@ -130,23 +139,16 @@
           .035+tile.y*mix(.43,.925,uTheme));
         vec3 detail=texture2D(uTexture,uv).rgb;
         float height0=dot(detail,vec3(.30,.59,.11));
-        float bumpX=dot(texture2D(uTexture,uv+vec2(.002,0)).rgb,vec3(.30,.59,.11))-height0;
-        float bumpY=dot(texture2D(uTexture,uv+vec2(0,.002)).rgb,vec3(.30,.59,.11))-height0;
-        vec3 tangent=normalize(cross(vec3(0,1,0),N));
-        N=normalize(N+tangent*bumpX*1.8+normalize(cross(N,tangent))*bumpY*1.8);
-        direct=max(dot(N,sun),0.0);
-        float birch=noise(vec2(vUv.x*48.0,vWorld.y*23.0)+uSeed);
-        float rough=fbm(vec2(vUv.x*34.0,vWorld.y*3.1)+uSeed*3.0);
-        vec3 pale=mix(vec3(.88,.87,.83),detail*vec3(1.04,1.03,1.0),.55)*(.98+.04*birch);
-        float scars=smoothstep(.67,.88,noise(vec2(vUv.x*8.0+uSeed*3.0,vWorld.y*20.0)));
-        pale=mix(pale,vec3(.22,.22,.19),scars*.18);
-        vec3 dark=detail*(.88+.22*rough)+vec3(.015,.019,.020);
+        float rough=noise(vec2(vUv.x*34.0,vWorld.y*3.1)+uSeed*3.0);
+        // Calibrated to the supplied moth photos; bark and moths share the same light.
+        vec3 pale=mix(detail,vec3(height0),.88)*.80+vec3(.18);
+        vec3 dark=detail*.75;
         color=mix(pale,dark,uTheme)*vColor;
         float moss=(1.0-smoothstep(.12,1.8,vWorld.y))*smoothstep(.35,.66,rough);
         color=mix(color,vec3(.19,.25,.10),moss*.52);
-        color*=mix(.70+.32*direct+.08*dapple,.46+.45*direct+.15*dapple,uTheme);
+        color*=surfaceLight;
       }else if(uKind<1.5){
-        float patch=fbm(vWorld.xz*.47),grain=noise(vWorld.xz*39.0);
+        float patch=noise(vWorld.xz*.47),grain=noise(vWorld.xz*39.0);
         float path=1.0-smoothstep(.55,2.7,abs(vWorld.x-sin(vWorld.z*.10)*2.0));
         vec3 moss=mix(vec3(.16,.21,.10),vec3(.30,.36,.15),patch);
         vec3 soil=mix(vec3(.22,.18,.115),vec3(.34,.29,.18),patch);
@@ -154,7 +156,7 @@
         float litter=smoothstep(.81,.94,grain)*noise(vWorld.xz*6.0);
         color=mix(color,vec3(.45,.36,.17),litter*.45);
         color*=.65+.47*dapple; color*=mix(1.0,.71,uTheme);
-        color*=.75+.35*noise(vWorld.xz*17.0)+.18*noise(vWorld.xz*83.0);
+        color*=.85+.25*grain;
       }else if(uKind<2.5){
         float diffuse=.54+.32*abs(dot(N,sun))+.22*hemi;
         color*=diffuse*(.79+.31*dapple);
@@ -168,7 +170,7 @@
       }else if(uKind<4.5){
         vec4 moth=texture2D(uTexture,vUv);
         if(moth.a<.42)discard;
-        color=moth.rgb*(.80+.16*direct+.04*dapple);
+        color=moth.rgb*surfaceLight;
       }else{
         color*=.61+.35*direct;
       }
@@ -181,6 +183,8 @@
   class ForestScene {
     constructor(canvas){
       this.canvas=canvas;this.theme='pale';this.trees=[];this.moths=[];this.meshes=[];
+      this.active=true;
+      this.renderScale=Math.min(typeof devicePixelRatio==='number'?devicePixelRatio:1,window.matchMedia&&window.matchMedia('(pointer: coarse)').matches?1:1.25);
       this.camera={position:[0,1.85,4],yaw:0,pitch:.1,fov:58};
       this.gl=canvas.getContext('webgl',{alpha:false,antialias:true,powerPreference:'high-performance'});
       this.supported=!!this.gl;if(!this.gl)return;
@@ -200,6 +204,7 @@
       this.skyBuffer=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,this.skyBuffer);
       gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);
       this.trunks=[0,1.7,3.4,5.1].map(s=>this.mesh(trunkData(s)));
+      this.farTrunks=[0,1.7,3.4,5.1].map(s=>this.mesh(trunkData(s,12,12)));
       const ground=data();triangle(ground,[-130,-.06,-130],[-130,-.06,130],[130,-.06,-130],[1,1,1]);
       triangle(ground,[130,-.06,-130],[-130,-.06,130],[130,-.06,130],[1,1,1]);
       this.ground=this.mesh(ground);this.identity=ident();this.normalIdentity=new Float32Array([1,0,0,0,1,0,0,0,1]);
@@ -228,6 +233,23 @@
         gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(values),gl.STATIC_DRAW);
       }return m;
     }
+    chunkMeshes(source,kind){
+      const cells=new Map();
+      for(let p=0;p<source.p.length;p+=9){
+        const x=(source.p[p]+source.p[p+3]+source.p[p+6])/3,z=(source.p[p+2]+source.p[p+5]+source.p[p+8])/3;
+        const key=Math.floor(x/18)+','+Math.floor(z/18);
+        let cell=cells.get(key);
+        if(!cell){cell={data:data(),min:[Infinity,Infinity,Infinity],max:[-Infinity,-Infinity,-Infinity]};cells.set(key,cell);}
+        const first=p/3;
+        for(const [attribute,size] of [['p',3],['n',3],['uv',2],['c',3]])
+          for(let i=first*size;i<(first+3)*size;i++)cell.data[attribute].push(source[attribute][i]);
+        for(let v=p;v<p+9;v+=3)for(let axis=0;axis<3;axis++){
+          cell.min[axis]=Math.min(cell.min[axis],source.p[v+axis]);cell.max[axis]=Math.max(cell.max[axis],source.p[v+axis]);
+        }
+      }
+      return [...cells.values()].map(cell=>({kind,mesh:this.mesh(cell.data),center:cell.min.map((v,i)=>(v+cell.max[i])/2),extent:cell.min.map((v,i)=>(cell.max[i]-v)/2)}));
+    }
+    inFrustum(center,extent){return !this.frustum.some(p=>dot(p,center)+p[3]+Math.abs(p[0])*extent[0]+Math.abs(p[1])*extent[1]+Math.abs(p[2])*extent[2]<0);}
     texture(url){
       const gl=this.gl,t=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,t);
       gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,1,1,0,gl.RGBA,gl.UNSIGNED_BYTE,new Uint8Array([120,130,110,url.includes('moth-')?0:255]));
@@ -277,7 +299,7 @@
       const m=this.viewProjection;
       this.frustum=[0,1,2].flatMap(row=>[1,-1].map(sign=>[m[3]+sign*m[row],m[7]+sign*m[4+row],m[11]+sign*m[8+row],m[15]+sign*m[12+row]]));
     }
-    resize(){if(!this.supported)return;const ratio=Math.min(devicePixelRatio||1,1.5),w=Math.round(this.canvas.clientWidth*ratio),h=Math.round(this.canvas.clientHeight*ratio);
+    resize(){if(!this.supported)return;const ratio=Math.min(this.renderScale,Math.sqrt(1200000/Math.max(1,this.canvas.clientWidth*this.canvas.clientHeight))),w=Math.round(this.canvas.clientWidth*ratio),h=Math.round(this.canvas.clientHeight*ratio);
       if(this.canvas.width!==w||this.canvas.height!==h){this.canvas.width=w;this.canvas.height=h;}this.gl.viewport(0,0,w,h);}
     randomizeScene(theme,moths){
       if(!this.supported)return;
@@ -286,22 +308,16 @@
       const dispose=reuse?this.targetMeshes||[]:this.meshes;
       for(const mesh of dispose)for(const b of mesh.buffers)this.gl.deleteBuffer(b);
       this.meshes=reuse?[...this.forestMeshes]:[];this.targetMeshes=[];
-      this.theme=theme;this.moths=moths;this.camera={position:[0,1.85,4],yaw:0,pitch:.105,fov:58};
-      const dark=theme==='dark';let anchorIndex=0;
+      this.theme=theme;this.moths=moths;
+      if(!reuse)this.camera={position:[0,1.85,4],yaw:0,pitch:.045,fov:58};
+      const dark=theme==='dark';
       if(reuse){
-        // New viewpoint after each capture; reuse static geometry to avoid a long rebuild hitch.
-        const candidates=this.trees.map((t,i)=>({t,i})).filter(({t})=>Math.abs(t.x)<10&&t.z>-13&&t.z<10);
+        // Change the surroundings while preserving the student's viewing direction.
+        const previous=[...this.camera.position];
         for(let attempt=0;attempt<80;attempt++){
-          const {t,i}=candidates[Math.floor(rand(0,candidates.length))],yaw=rand(-Math.PI,Math.PI);
-          const eye=[t.x-Math.sin(yaw)*10.6,1.85,t.z+Math.cos(yaw)*10.6];
-          if(Math.abs(eye[0])>14||eye[2]<-21||eye[2]>22||this.trees.some(other=>Math.hypot(eye[0]-other.x,eye[2]-other.z)<other.radius+2.1))continue;
-          const vx=t.x-eye[0],vz=t.z-eye[2],length2=vx*vx+vz*vz;
-          if(this.trees.some(other=>{
-            if(other===t)return false;
-            const f=clamp(((other.x-eye[0])*vx+(other.z-eye[2])*vz)/length2,0,1);
-            return f>.02&&f<.97&&Math.hypot(eye[0]+f*vx-other.x,eye[2]+f*vz-other.z)<other.radius*1.25+.35;
-          }))continue;
-          this.camera.position=eye;this.camera.yaw=yaw;anchorIndex=i;break;
+          const angle=rand(0,TAU),step=rand(2.5,5.0),eye=[previous[0]+Math.cos(angle)*step,1.85,previous[2]+Math.sin(angle)*step];
+          if(Math.abs(eye[0])>12||eye[2]<-14||eye[2]>18||this.trees.some(other=>Math.hypot(eye[0]-other.x,eye[2]-other.z)<other.radius+1.6))continue;
+          this.camera.position=eye;break;
         }
       }else{
       this.trees=[];
@@ -319,8 +335,8 @@
       // Place the initial camera inside a clearing, with trunks on all sides.
       for(const [x,z,r] of [[-6.2,5.8,.44],[6.0,6.8,.47],[-2.7,11.7,.38],[3.5,12.4,.42]])
         plant(x+rand(-.18,.18),z,r,rand(21,27),rand(-.022,.022));
-      for(let i=0;i<155;i++)for(let attempt=0;attempt<35;attempt++){
-        const a=rand(0,TAU),distance=i<70?rand(10,35):rand(35,74),x=Math.cos(a)*distance,z=4+Math.sin(a)*distance;
+      for(let i=0;i<99;i++)for(let attempt=0;attempt<35;attempt++){
+        const a=rand(0,TAU),distance=i<58?rand(10,34):rand(34,68),x=Math.cos(a)*distance,z=4+Math.sin(a)*distance;
         if(plant(x,z,rand(.21,.49),rand(18,29),rand(-.038,.038)))break;
       }
       const wood=data(),foliage=data(),understory=data(),shadows=data();
@@ -354,15 +370,15 @@
               }
             }
           };
-          cluster(tip,rand(1.10,1.75),index<35?60:index<75?35:15);
+          cluster(tip,rand(1.10,1.75),index<30?35:index<65?20:10);
           for(let fork=0;fork<2;fork++){
             const root=add(start,sub(tip,start),.6),side=yaw+(fork?-.65:.65),end=add(root,[Math.cos(side),.45,Math.sin(side)],length*.8);
-            branch(wood,root,end,r*.045,color);cluster(end,1.10,index<35?35:index<75?20:10);
+            branch(wood,root,end,r*.045,color);cluster(end,1.10,index<30?20:10);
           }
         }
       });
       // Low saplings form a distant green understory, never photographic billboards.
-      for(let i=0;i<65;i++){
+      for(let i=0;i<26;i++){
         const angle=rand(0,TAU),distance=rand(30,63),x=Math.cos(angle)*distance,z=4+Math.sin(angle)*distance;
         if(this.trees.some(t=>Math.hypot(x-t.x,z-t.z)<2))continue;
         const h=rand(1.8,4.2),center=[x,h*.62,z];
@@ -377,7 +393,7 @@
         }
       }
       // Ferns and grass stay near the ground, leaving the experimental targets clear.
-      for(let i=0;i<230;i++){
+      for(let i=0;i<85;i++){
         const angle=rand(0,TAU),distance=rand(2.5,34),x=Math.cos(angle)*distance,z=4+Math.sin(angle)*distance;
         if(Math.abs(x-Math.sin(z*.1)*2)<1.35||Math.hypot(x,z-4)<2.0)continue;
         if(this.trees.some(t=>Math.hypot(x-t.x,z-t.z)<t.radius*1.3+.2))continue;
@@ -393,7 +409,7 @@
         }
       }
       // Short grass blades break up the ground plane without transparent cards.
-      for(let i=0;i<740;i++){
+      for(let i=0;i<260;i++){
         const angle=rand(0,TAU),distance=rand(2.0,42),x=Math.cos(angle)*distance,z=4+Math.sin(angle)*distance;
         if(Math.abs(x-Math.sin(z*.1)*2)<1.3||this.trees.some(t=>Math.hypot(x-t.x,z-t.z)<t.radius*1.25))continue;
         for(let j=0;j<7;j++){
@@ -402,25 +418,38 @@
           triangle(understory,add(base,[Math.sin(yaw)*w,0,-Math.cos(yaw)*w]),add(base,[-Math.sin(yaw)*w,0,Math.cos(yaw)*w]),tip,canopyColor(rand(.7,1.3)));
         }
       }
-      this.wood=this.mesh(wood);this.foliage=this.mesh(foliage);this.understory=this.mesh(understory);this.shadows=this.mesh(shadows);
-      this.meshes.push(this.wood,this.foliage,this.understory,this.shadows);
+      this.decorMeshes=[...this.chunkMeshes(wood,5),...this.chunkMeshes(foliage,2),...this.chunkMeshes(understory,2)];
+      this.shadows=this.mesh(shadows);
+      this.meshes.push(...this.decorMeshes.map(chunk=>chunk.mesh),this.shadows);
       this.forestMeshes=[...this.meshes];
       }
-      const living=moths.filter(m=>m.alive),anchor=living[Math.floor(rand(0,living.length))];
-      const eye=this.camera.position,yaw=this.camera.yaw;
-      const eligible=this.trees.map((t,i)=>({t,i})).filter(({t,i})=>{
-        const dx=t.x-eye[0],dz=t.z-eye[2],ahead=dx*Math.sin(yaw)-dz*Math.cos(yaw),side=dx*Math.cos(yaw)+dz*Math.sin(yaw);
-        return i!==anchorIndex&&ahead>3&&ahead<27&&Math.abs(side)<ahead*.78;
-      });
-      if(!eligible.length)eligible.push({t:this.trees[anchorIndex],i:anchorIndex});
-      for(let i=eligible.length-1;i>0;i--){const j=Math.floor(rand(0,i+1));[eligible[i],eligible[j]]=[eligible[j],eligible[i]];}
-      let cursor=0;const occupied=new Map();
-      living.forEach(moth=>{
-        const target=moth===anchor?{t:this.trees[anchorIndex],i:anchorIndex}:eligible[cursor++%eligible.length];
+      this.resize();this.updateViewProjection();
+      const living=moths.filter(m=>m.alive),eye=this.camera.position;
+      for(let i=living.length-1;i>0;i--){const j=Math.floor(rand(0,i+1));[living[i],living[j]]=[living[j],living[i]];}
+      const eligible=this.trees.map((t,i)=>({t,i,distance:Math.hypot(t.x-eye[0],t.z-eye[2])})).filter(target=>target.distance>3&&target.distance<34);
+      const sectors=Array.from({length:8},()=>[]),cursors=Array(8).fill(0),occupied=new Map();
+      for(const target of eligible){
+        const angle=(Math.atan2(target.t.z-eye[2],target.t.x-eye[0])+TAU)%TAU;
+        sectors[Math.floor(angle/TAU*8)].push(target);
+      }
+      sectors.forEach(sector=>sector.sort((a,b)=>a.distance-b.distance));
+      const groups={light:data(),dark:data()},records={light:[],dark:[]};
+      moths.forEach(moth=>{moth.batch=null;});
+      living.forEach((moth,index)=>{
+        const sector=index%8,choices=sectors[sector].length?sectors[sector]:eligible;
+        const target=choices[cursors[sector]++%choices.length];
         const tree=target.t,slot=occupied.get(target.i)||0;occupied.set(target.i,slot+1);
-        const y=moth===anchor?2.95:1.8+slot*.9+rand(0,.3);
-        const angle=Math.atan2(this.camera.position[2]-tree.z,this.camera.position[0]-tree.x)+rand(-.24,.24);
-        moth.treeIndex=target.i;moth.scale=rand(.47,.58);moth.width=Math.min(.64*moth.scale*2.06,tree.radius*1.45);
+        let y=1.12+(slot%5)*.53+rand(0,.12);
+        let angle=Math.atan2(eye[2]-tree.z,eye[0]-tree.x)+rand(-.20,.20);
+        moth.treeIndex=target.i;moth.scale=rand(.47,.58);moth.width=Math.min(.50*moth.scale*2.06,tree.radius*1.2);
+        // Leave the new aiming circle empty. Students must observe and aim again.
+        const clearRadius=Math.max(56,Math.min(this.canvas.clientWidth,this.canvas.clientHeight)*.08);
+        for(let attempt=0;attempt<12;attempt++){
+          const point=this.project(surface(tree,angle,y/tree.height,.018));
+          if(!point||Math.hypot(point.x-this.canvas.clientWidth/2,point.y-this.canvas.clientHeight/2)>clearRadius)break;
+          y=attempt<10?rand(1.0,3.9):(this.camera.pitch>=0?.85:4.5);
+          angle=Math.atan2(eye[2]-tree.z,eye[0]-tree.x)+rand(-.25,.25);
+        }
         const h=moth.width/2.06,rotation=rand(-.12,.12),cs=Math.cos(rotation),sn=Math.sin(rotation);
         moth.world=surface(tree,angle,y/tree.height,.018);
         moth.normal=norm([Math.cos(angle)*Math.cos(tree.lean),Math.cos(angle)*Math.sin(tree.lean),Math.sin(angle)]);
@@ -429,17 +458,32 @@
           const height=y+x*sn+z*cs;
           vertex(d,surface(tree,angle+arc,height/tree.height,.018),moth.normal,[u,v]);
         };
-        for(let row=0;row<8;row++)for(let col=0;col<32;col++){
-          const u=col/32,U=(col+1)/32,v=row/8,V=(row+1)/8;
+        for(let row=0;row<3;row++)for(let col=0;col<16;col++){
+          const u=col/16,U=(col+1)/16,v=row/3,V=(row+1)/3;
           put(u,v);put(U,v);put(u,V);put(u,V);put(U,v);put(U,V);
         }
-        moth.mesh=this.mesh(d);this.meshes.push(moth.mesh);this.targetMeshes.push(moth.mesh);
+        const group=groups[moth.type],start=group.p.length/3;
+        for(const key of ['p','n','uv','c'])group[key].push(...d[key]);
+        records[moth.type].push({moth,start,count:d.p.length/3});
       });
+      this.mothBatches=[];
+      for(const type of ['light','dark']){
+        const mesh=this.mesh(groups[type]);this.meshes.push(mesh);this.targetMeshes.push(mesh);this.mothBatches.push({type,mesh});
+        records[type].forEach(({moth,start,count})=>{moth.batch={mesh,start,count};});
+      }
       this.resize();this.updateViewProjection();
       this.canvas.dataset.sceneBuildMs=String(Math.round(performance.now()-buildStart));
-      this.canvas.dataset.sceneTriangles=String(Math.round(this.meshes.reduce((n,m)=>n+m.count/3,0)+this.trees.length*this.trunks[0].count/3));
+      this.canvas.dataset.sceneTriangles=String(Math.round(this.meshes.reduce((n,m)=>n+m.count/3,0)+this.trees.reduce((n,t)=>n+(Math.hypot(t.x-eye[0],t.z-eye[2])<34?this.trunks[0]:this.farTrunks[0]).count/3,0)));
     }
-    rotate(dx,dy){this.camera.yaw=((this.camera.yaw-dx*.0031+Math.PI)%TAU+TAU)%TAU-Math.PI;this.camera.pitch=clamp(this.camera.pitch-dy*.0027,-.72,1.18);}
+    turn(yaw,pitch){this.camera.yaw=((this.camera.yaw+yaw+Math.PI)%TAU+TAU)%TAU-Math.PI;this.camera.pitch=clamp(this.camera.pitch+pitch,-.72,1.18);}
+    rotate(dx,dy){this.turn(-dx*.0025,-dy*.0023);}
+    setActive(value){this.active=value;this.frameStart=0;this.lastRenderedAt=undefined;}
+    removeMoth(moth){
+      if(!this.supported||!moth.batch)return;
+      const {mesh,start,count}=moth.batch;
+      this.gl.bindBuffer(this.gl.ARRAY_BUFFER,mesh.p);
+      this.gl.bufferSubData(this.gl.ARRAY_BUFFER,start*3*4,new Float32Array(count*3));
+    }
     move(forward,strafe){
       const steps=Math.max(1,Math.ceil(Math.hypot(forward,strafe)/.16));
       for(let s=0;s<steps;s++){
@@ -463,7 +507,7 @@
       gl.uniform1f(p.uKind,kind);gl.uniform1f(p.uSeed,seed);gl.drawArrays(gl.TRIANGLES,0,mesh.count);
     }
     render(){
-      if(!this.supported||!this.canvas.clientWidth||!this.canvas.clientHeight)return;
+      if(!this.active||!this.supported||!this.canvas.clientWidth||!this.canvas.clientHeight)return;
       this.resize();this.updateViewProjection();const gl=this.gl,dark=this.theme==='dark',fog=dark?[.43,.51,.49]:[.72,.77,.68];
       gl.depthMask(true);gl.clearColor(...fog,1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
       gl.disable(gl.BLEND);gl.disable(gl.DEPTH_TEST);gl.depthMask(false);gl.useProgram(this.sky.program);
@@ -479,17 +523,24 @@
       for(const tree of this.trees){
         const center=[tree.x-Math.sin(tree.lean)*tree.height*.5,tree.height*.5,tree.z];
         const ext=[tree.radius*1.3+Math.abs(Math.sin(tree.lean))*tree.height*.5+.7,tree.height*.5+.3,tree.radius*1.3+.5];
-        if(this.frustum.some(p=>dot(p,center)+p[3]+Math.abs(p[0])*ext[0]+Math.abs(p[1])*ext[1]+Math.abs(p[2])*ext[2]<0))continue;
-        this.draw(this.trunks[tree.variant],0,tree.model,tree.normal,tree.seed+tree.x*.37+tree.z*.13);
+        if(!this.inFrustum(center,ext))continue;
+        const trunks=Math.hypot(tree.x-this.camera.position[0],tree.z-this.camera.position[2])<34?this.trunks:this.farTrunks;
+        this.draw(trunks[tree.variant],0,tree.model,tree.normal,tree.seed+tree.x*.37+tree.z*.13);
       }
-      this.draw(this.wood,5);this.draw(this.foliage,2);this.draw(this.understory,2);
+      for(const chunk of this.decorMeshes)if(this.inFrustum(chunk.center,chunk.extent))this.draw(chunk.mesh,chunk.kind);
       // Alpha-tested moths write depth just like bark and leaves; no transparent sorting artifacts.
-      for(const moth of this.moths)if(moth.alive&&moth.mesh){gl.bindTexture(gl.TEXTURE_2D,this.textures[moth.type]);this.draw(moth.mesh,4);}
+      for(const batch of this.mothBatches||[]){gl.bindTexture(gl.TEXTURE_2D,this.textures[batch.type]);this.draw(batch.mesh,4);}
     }
-    animate(now){this.render();
-      if(this.canvas.clientWidth&&this.canvas.clientHeight){
+    animate(now){
+      if(this.lastRenderedAt!==undefined&&now-this.lastRenderedAt<1000/60-.4){requestAnimationFrame(this.animate);return;}
+      this.lastRenderedAt=this.lastRenderedAt===undefined?now:now-(now-this.lastRenderedAt)%(1000/60);this.render();
+      if(this.active&&this.canvas.clientWidth&&this.canvas.clientHeight){
         if(!this.frameStart){this.frameStart=now;this.frameCount=0;}
-        if(++this.frameCount>=90){this.canvas.dataset.renderFps=String(Math.round(this.frameCount*1000/(now-this.frameStart)));this.frameStart=now;this.frameCount=0;}
+        if(++this.frameCount>=90){
+          const fps=this.frameCount*1000/(now-this.frameStart);this.canvas.dataset.renderFps=String(Math.round(fps));
+          if(fps<30&&this.renderScale>.75)this.renderScale=Math.max(.75,this.renderScale*.88);
+          this.frameStart=now;this.frameCount=0;
+        }
       }else{this.frameStart=0;}
       requestAnimationFrame(this.animate);
     }
@@ -512,7 +563,17 @@
         return Math.hypot(a[0]+ray[0]*t-bend[0]*tree.radius,a[2]+ray[2]*t-bend[1]*tree.radius)<radius;
       });
     }
-    nearestMoth(moths){return moths.filter(m=>m.alive&&m.world&&this.mothVisible(m)).map(moth=>{const point=this.project(moth.world);return point?{moth,point,distance:Math.hypot(point.x-this.canvas.clientWidth/2,point.y-this.canvas.clientHeight/2)}:null;}).filter(Boolean).sort((a,b)=>a.distance-b.distance)[0]||null;}
+    nearestMoth(moths){
+      let nearest=null;
+      for(const moth of moths){
+        if(!moth.alive||!moth.world)continue;
+        const point=this.project(moth.world);if(!point)continue;
+        const distance=Math.hypot(point.x-this.canvas.clientWidth/2,point.y-this.canvas.clientHeight/2);
+        if(nearest&&distance>=nearest.distance)continue;
+        if(this.mothVisible(moth))nearest={moth,point,distance};
+      }
+      return nearest;
+    }
   }
   window.ForestScene=ForestScene;
 })();

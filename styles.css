@@ -39,8 +39,8 @@ button:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
 .scene-viewport { position: absolute; inset: 0; overflow: hidden; touch-action: none; }
 .theme-pale .scene-viewport { background: linear-gradient(#b9c8b3 0%, #dce2cf 47%, #586b49 100%); }
 .theme-dark .scene-viewport { background: linear-gradient(#465e5b 0%, #81928a 49%, #162923 100%); }
-#forestCanvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; opacity: 1; filter: saturate(.97); transition: opacity .28s ease, filter .28s ease, transform .35s ease; }
-#forestCanvas.is-switching { opacity: .12; filter: blur(8px) saturate(.55); transform: scale(1.025); }
+#forestCanvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; opacity: 1; transition: opacity .18s ease; }
+#forestCanvas.is-switching { opacity: .12; }
 .scene-atmosphere { display: none; }
 .scene-atmosphere::before { content: ""; position: absolute; inset: -20%; background: linear-gradient(112deg, transparent 22%, rgba(219, 242, 199, .12) 40%, transparent 55%); transform: translateX(-12%); animation: forest-light 12s ease-in-out infinite alternate; mix-blend-mode: screen; }
 .scene-atmosphere::after { content: ""; position: absolute; left: -10%; right: -10%; bottom: -18%; height: 52%; background: radial-gradient(ellipse at center, rgba(219, 231, 219, .23), transparent 70%); filter: blur(18px); animation: forest-mist 10s ease-in-out infinite alternate; }
@@ -84,11 +84,11 @@ button:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
 .scene-refresh b { font: 500 2.2rem/1 Georgia, serif; }
 
 /* ---------- controls ---------- */
-.bottom-controls { position: absolute; z-index: 9; left: max(24px, env(safe-area-inset-left)); right: max(24px, env(safe-area-inset-right)); bottom: max(20px, env(safe-area-inset-bottom)); display: flex; align-items: end; justify-content: space-between; pointer-events: none; }
+.bottom-controls { position: absolute; z-index: 9; left: max(clamp(24px, 4vw, 54px), env(safe-area-inset-left)); right: max(clamp(24px, 4vw, 54px), env(safe-area-inset-right)); bottom: max(28px, env(safe-area-inset-bottom)); display: flex; align-items: end; justify-content: space-between; pointer-events: none; }
 .bottom-controls > * { pointer-events: auto; }
 .joystick-wrap { display: grid; justify-items: center; gap: 7px; }
 .joystick-wrap small { color: rgba(255, 255, 255, .7); font-size: .68rem; text-shadow: 0 2px 8px #000; }
-.joystick { position: relative; width: 110px; height: 110px; border: 1px solid rgba(255, 255, 255, .25); border-radius: 50%; background: radial-gradient(circle, rgba(255, 255, 255, .1), rgba(4, 10, 6, .46)); box-shadow: inset 0 0 25px rgba(255, 255, 255, .05), 0 10px 30px rgba(0, 0, 0, .2); backdrop-filter: blur(10px); touch-action: none; }
+.joystick { position: relative; width: 160px; height: 160px; border: 2px solid rgba(255, 255, 255, .36); border-radius: 50%; background: radial-gradient(circle, rgba(255, 255, 255, .13), rgba(4, 10, 6, .70)); box-shadow: inset 0 0 25px rgba(255, 255, 255, .05), 0 10px 30px rgba(0, 0, 0, .2); touch-action: none; user-select: none; }
 .joystick::before, .joystick::after { content: ""; position: absolute; left: 50%; top: 50%; background: rgba(255, 255, 255, .15); transform: translate(-50%, -50%); }
 .joystick::before { width: 64%; height: 1px; }
 .joystick::after { width: 1px; height: 64%; }
@@ -140,7 +140,6 @@ button:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
   .hud-pill small { display: none; }
   .hud-title b { font-size: 1rem; }
   .desktop-hint { display: none; }
-  .joystick { width: 92px; height: 92px; }
   .capture-button { width: 96px; height: 96px; }
 }
 
@@ -170,6 +169,19 @@ button:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
   .scene-meta b { font-size: clamp(1.4rem, 5vh, 2rem); }
   .scene-meta i { font-size: .8rem; }
   .scene-arrow { padding: 0 15px 12px; font-size: 1rem; }
+}
+
+@media (pointer: coarse) {
+  .joystick { width: clamp(160px, 20vmin, 180px); height: clamp(160px, 20vmin, 180px); }
+  .joystick-wrap small { font-size: .82rem; }
+  .capture-button { width: 116px; height: 116px; }
+  .desktop-hint { display: none; }
+  .round-control, .hud-pill, .ready-overlay, .result-panel { backdrop-filter: none; }
+}
+@media (pointer: coarse) and (max-height: 500px) {
+  .joystick { width: 128px; height: 128px; }
+  .capture-button { width: 104px; height: 104px; }
+  .bottom-controls { bottom: max(16px, env(safe-area-inset-bottom)); }
 }
 
 @media (prefers-reduced-motion: reduce) {

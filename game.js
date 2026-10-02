@@ -6,7 +6,7 @@
   const random = (min, max) => Math.random() * (max - min) + min;
   const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
   const CAPTURE_GOAL = 10;
-  const MOTHS_PER_TYPE = 20;
+  const MOTHS_PER_TYPE = 60;
   const TIME_LIMIT_MS = 120000;
   const MAX_CAPTURE_DISTANCE = 15;
   const shuffle = (items) => {
@@ -57,6 +57,8 @@
     timerId: 0,
     drag: null,
     joy: { x: 0, y: 0, pointerId: null },
+    joyFiltered: { x: 0, y: 0 },
+    transitionTimers: [],
     keys: new Set(),
     audio: null,
     roundId: 0,
@@ -104,6 +106,11 @@
   function startGame(theme = state.theme) {
     // Keep large 3D textures off the network until a scene is actually selected.
     if (!renderer) renderer = new ForestScene(els.canvas);
+    if (renderer.setActive) renderer.setActive(true);
+    state.transitionTimers.forEach(clearTimeout);
+    state.transitionTimers = [];
+    releaseJoystick();
+    state.drag = null;
     clearInterval(state.timerId);
     state.keys.clear();
     state.theme = theme;
@@ -142,7 +149,7 @@
   function capture() {
     if (!state.running || state.transitioning) return;
     const target = renderer.nearestMoth(state.moths);
-    const threshold = clamp(innerWidth * .073, 64, 106);
+    const threshold = 34;
     if (!target || target.distance > threshold) {
       pulseReticle('miss');
       playSound('miss');
@@ -158,6 +165,7 @@
     }
     const moth = target.moth;
     moth.alive = false;
+    if (renderer.removeMoth) renderer.removeMoth(moth);
     state.captured[moth.type] += 1;
     state.totalCaptured += 1;
     pulseReticle('hit');
@@ -167,7 +175,8 @@
     showFeedback('已捕食 ' + state.totalCaptured + ' / ' + CAPTURE_GOAL);
     if (state.totalCaptured >= CAPTURE_GOAL) {
       state.running = false;
-      window.setTimeout(() => finishGame('complete'), 520);
+      const roundId = state.roundId;
+      window.setTimeout(() => { if (roundId === state.roundId) finishGame('complete'); }, 520);
       return;
     }
     transitionScene();
@@ -175,18 +184,25 @@
 
   function transitionScene() {
     state.transitioning = true;
+    const roundId = state.roundId;
+    const started = performance.now();
+    releaseJoystick();
+    state.drag = null;
     els.refreshNumber.textContent = String(state.totalCaptured).padStart(2, '0') + ' / 10';
     els.refresh.classList.add('show');
     els.canvas.classList.add('is-switching');
-    window.setTimeout(() => {
+    state.transitionTimers.push(window.setTimeout(() => {
+      if (roundId !== state.roundId) return;
       renderer.randomizeScene(state.theme, state.moths);
-    }, 270);
-    window.setTimeout(() => {
+    }, 180));
+    state.transitionTimers.push(window.setTimeout(() => {
+      if (roundId !== state.roundId) return;
       els.canvas.classList.remove('is-switching');
       els.refresh.classList.remove('show');
       state.transitioning = false;
-      state.deadline += 760;
-    }, 760);
+      state.deadline += performance.now() - started;
+      state.transitionTimers = [];
+    }, 560));
   }
 
   function finishGame(reason) {
@@ -195,6 +211,8 @@
     state.roundId += 1;
     state.running = false;
     state.transitioning = false;
+    releaseJoystick();
+    if (renderer.setActive) renderer.setActive(false);
     els.resultEnvironment.textContent = themeLabel();
     els.lightCaptured.textContent = String(state.captured.light);
     els.darkCaptured.textContent = String(state.captured.dark);
@@ -261,31 +279,35 @@
     const factor = Math.min(1, radius / distance);
     const x = dx * factor; const y = dy * factor;
     els.knob.style.transform = 'translate(calc(-50% + ' + x + 'px), calc(-50% + ' + y + 'px))';
-    state.joy.x = x / radius;
-    state.joy.y = y / radius;
+    const magnitude = Math.min(1, distance / radius);
+    const response = magnitude <= .07 ? 0 : Math.pow((magnitude - .07) / .93, 1.4);
+    state.joy.x = dx / distance * response;
+    state.joy.y = dy / distance * response;
   }
 
   function releaseJoystick(event) {
     if (event && state.joy.pointerId !== event.pointerId) return;
     state.joy = { x: 0, y: 0, pointerId: null };
+    state.joyFiltered = { x: 0, y: 0 };
     els.knob.style.transform = 'translate(-50%, -50%)';
   }
 
   function controlFrame(now) {
-    const seconds = clamp((now - state.lastControlFrame) / 1000, 0, .05);
+    const seconds = clamp((now - state.lastControlFrame) / 1000, 0, .10);
     state.lastControlFrame = now;
-    if (renderer && !els.game.classList.contains('is-hidden')) {
+    if (renderer && state.running && !state.transitioning) {
+      const smoothing = 1 - Math.exp(-seconds / .075);
+      state.joyFiltered.x += (state.joy.x - state.joyFiltered.x) * smoothing;
+      state.joyFiltered.y += (state.joy.y - state.joyFiltered.y) * smoothing;
       const forward = Number(state.keys.has('ArrowUp') || state.keys.has('KeyW'))
         - Number(state.keys.has('ArrowDown') || state.keys.has('KeyS'));
       const strafe = Number(state.keys.has('ArrowRight') || state.keys.has('KeyD'))
         - Number(state.keys.has('ArrowLeft') || state.keys.has('KeyA'));
       const length = Math.hypot(forward, strafe) || 1;
       if (forward || strafe || state.joy.pointerId !== null) {
-        renderer.move((forward / length * 3.1 - state.joy.y * 3.8) * seconds, strafe / length * 3.1 * seconds);
+        renderer.move((forward / length * 2.8 - state.joyFiltered.y * 2.8) * seconds, strafe / length * 2.8 * seconds);
       }
-    }
-    if (renderer && state.joy.pointerId !== null) {
-      renderer.rotate(-state.joy.x * seconds * 430, 0);
+      if (state.joy.pointerId !== null) renderer.turn(state.joyFiltered.x * seconds * .95, 0);
     }
     requestAnimationFrame(controlFrame);
   }
@@ -296,6 +318,13 @@
     state.roundId += 1;
     state.running = false;
     state.transitioning = false;
+    state.transitionTimers.forEach(clearTimeout);
+    state.transitionTimers = [];
+    releaseJoystick();
+    state.drag = null;
+    if (renderer && renderer.setActive) renderer.setActive(false);
+    els.canvas.classList.remove('is-switching');
+    els.refresh.classList.remove('show');
     els.result.classList.add('is-hidden');
     els.ready.classList.add('is-hidden');
     els.game.classList.add('is-hidden');
@@ -328,6 +357,7 @@
   });
 
   els.viewport.addEventListener('pointerdown', (event) => {
+    if (!state.running || state.transitioning) return;
     if (event.target.closest('.game-hud, .bottom-controls')) return;
     state.drag = { id: event.pointerId, x: event.clientX, y: event.clientY };
     els.viewport.setPointerCapture(event.pointerId);
@@ -348,6 +378,8 @@
   }, { passive: false });
 
   els.joystick.addEventListener('pointerdown', (event) => {
+    if (!state.running || state.transitioning || state.joy.pointerId !== null) return;
+    event.preventDefault();
     state.joy.pointerId = event.pointerId;
     els.joystick.setPointerCapture(event.pointerId);
     updateJoystick(event);
@@ -357,6 +389,7 @@
   });
   els.joystick.addEventListener('pointerup', releaseJoystick);
   els.joystick.addEventListener('pointercancel', releaseJoystick);
+  els.joystick.addEventListener('lostpointercapture', releaseJoystick);
 
   const movementKeys = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'KeyA', 'KeyD', 'KeyW', 'KeyS']);
   window.addEventListener('keydown', (event) => {
@@ -371,8 +404,11 @@
     }
   });
   window.addEventListener('keyup', (event) => state.keys.delete(event.code));
-  window.addEventListener('blur', () => state.keys.clear());
-  window.addEventListener('resize', () => { if (renderer) renderer.resize(); });
+  window.addEventListener('blur', () => { state.keys.clear(); state.drag = null; releaseJoystick(); });
+  window.addEventListener('resize', () => { releaseJoystick(); if (renderer) renderer.resize(); });
+  if (document.addEventListener) document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { state.keys.clear(); state.drag = null; releaseJoystick(); }
+  });
   requestAnimationFrame(controlFrame);
 
   const modelContext = document.modelContext;
