@@ -105,9 +105,23 @@
     attribute vec2 aUv;
     uniform mat4 uVP,uModel;
     uniform mat3 uNormal;
+    uniform float uKind,uMothTime;
     varying vec3 vWorld,vNormal,vColor;
     varying vec2 vUv;
-    void main(){ vec4 p=uModel*vec4(aPosition,1.0); vWorld=p.xyz;
+    void main(){
+      vec3 position=aPosition;
+      // Moth batches reuse aColor for phase and width. Captured vertices are zeroed.
+      if(uKind>3.5&&uKind<4.5&&uMothTime>=0.0&&aPosition.y>0.0){
+        float beat=mod(uMothTime+aColor.x,8.0);
+        if(beat<.6){
+          float lift=sin(beat*5.235988); // smooth envelope over the .6 s burst
+          float flutter=lift*lift*(.5-.5*cos(beat*31.415927));
+          float wing=max(0.0,abs(aUv.x-.5)-.055)/.445;
+          vec3 tangent=cross(aNormal,vec3(0.0,1.0,0.0));
+          position+=aColor.y*flutter*(aNormal*(.17*wing)-tangent*(.045*wing*sign(aUv.x-.5)));
+        }
+      }
+      vec4 p=uModel*vec4(position,1.0); vWorld=p.xyz;
       vNormal=normalize(uNormal*aNormal);vColor=aColor;vUv=aUv;gl_Position=uVP*p; }
   `;
   const noiseShader=`
@@ -184,12 +198,13 @@
     constructor(canvas){
       this.canvas=canvas;this.theme='pale';this.trees=[];this.moths=[];this.meshes=[];
       this.active=true;
+      this.reducedMotion=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)');
       this.renderScale=Math.min(typeof devicePixelRatio==='number'?devicePixelRatio:1,window.matchMedia&&window.matchMedia('(pointer: coarse)').matches?1:1.25);
       this.camera={position:[0,1.85,4],yaw:0,pitch:.1,fov:58};
       this.gl=canvas.getContext('webgl',{alpha:false,antialias:true,powerPreference:'high-performance'});
       this.supported=!!this.gl;if(!this.gl)return;
       const gl=this.gl;
-      this.main=this.program(vertexShader,fragmentShader,['aPosition','aNormal','aColor','aUv'],['uVP','uModel','uNormal','uCamera','uFog','uTheme','uKind','uSeed','uTexture']);
+      this.main=this.program(vertexShader,fragmentShader,['aPosition','aNormal','aColor','aUv'],['uVP','uModel','uNormal','uCamera','uFog','uTheme','uKind','uSeed','uTexture','uMothTime']);
       this.sky=this.program(`attribute vec2 aPosition;varying vec2 vScreen;void main(){vScreen=aPosition;gl_Position=vec4(aPosition,1,1);}`,
         `precision highp float;varying vec2 vScreen;uniform vec3 uForward,uRight,uUp,uFog;uniform vec2 uLens;uniform float uTheme;
         ${noiseShader}
@@ -306,6 +321,9 @@
       const buildStart=performance.now();
       const reuse=this.theme===theme&&this.trees.length>0&&this.moths===moths;
       const dispose=reuse?this.targetMeshes||[]:this.meshes;
+      // The next frame draws the sky first. Do not leave enabled arrays pointing
+      // at the previous moth buffers, which are about to be deleted.
+      if(dispose.length)for(const key of ['aPosition','aNormal','aUv','aColor'])this.gl.disableVertexAttribArray(this.main[key]);
       for(const mesh of dispose)for(const b of mesh.buffers)this.gl.deleteBuffer(b);
       this.meshes=reuse?[...this.forestMeshes]:[];this.targetMeshes=[];
       this.theme=theme;this.moths=moths;
@@ -451,12 +469,13 @@
           angle=Math.atan2(eye[2]-tree.z,eye[0]-tree.x)+rand(-.25,.25);
         }
         const h=moth.width/2.06,rotation=rand(-.12,.12),cs=Math.cos(rotation),sn=Math.sin(rotation);
+        const motion=[8*((index*.61803398875)%1),moth.width,0];
         moth.world=surface(tree,angle,y/tree.height,.018);
         moth.normal=norm([Math.cos(angle)*Math.cos(tree.lean),Math.cos(angle)*Math.sin(tree.lean),Math.sin(angle)]);
         const d=data(),put=(u,v)=>{
           const x=(u-.5)*moth.width,z=(v-.5)*h,arc=(x*cs-z*sn)/(tree.radius*(1.14-.38*y/tree.height));
           const height=y+x*sn+z*cs;
-          vertex(d,surface(tree,angle+arc,height/tree.height,.018),moth.normal,[u,v]);
+          vertex(d,surface(tree,angle+arc,height/tree.height,.018),moth.normal,[u,v],motion);
         };
         for(let row=0;row<3;row++)for(let col=0;col<16;col++){
           const u=col/16,U=(col+1)/16,v=row/3,V=(row+1)/3;
@@ -506,7 +525,7 @@
       gl.uniformMatrix4fv(p.uModel,false,model);gl.uniformMatrix3fv(p.uNormal,false,normal);
       gl.uniform1f(p.uKind,kind);gl.uniform1f(p.uSeed,seed);gl.drawArrays(gl.TRIANGLES,0,mesh.count);
     }
-    render(){
+    render(now){
       if(!this.active||!this.supported||!this.canvas.clientWidth||!this.canvas.clientHeight)return;
       this.resize();this.updateViewProjection();const gl=this.gl,dark=this.theme==='dark',fog=dark?[.43,.51,.49]:[.72,.77,.68];
       gl.depthMask(true);gl.clearColor(...fog,1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
@@ -517,6 +536,7 @@
       gl.enable(gl.DEPTH_TEST);gl.depthMask(true);gl.useProgram(this.main.program);
       gl.uniformMatrix4fv(this.main.uVP,false,this.viewProjection);gl.uniform3fv(this.main.uCamera,this.camera.position);
       gl.uniform3fv(this.main.uFog,fog);gl.uniform1f(this.main.uTheme,dark?1:0);gl.uniform1i(this.main.uTexture,0);
+      gl.uniform1f(this.main.uMothTime,this.reducedMotion?.matches?-1:(now/1000)%8);
       gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,this.textures.bark);
       this.draw(this.ground,1);
       gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.depthMask(false);this.draw(this.shadows,3);gl.depthMask(true);gl.disable(gl.BLEND);
@@ -533,7 +553,7 @@
     }
     animate(now){
       if(this.lastRenderedAt!==undefined&&now-this.lastRenderedAt<1000/60-.4){requestAnimationFrame(this.animate);return;}
-      this.lastRenderedAt=this.lastRenderedAt===undefined?now:now-(now-this.lastRenderedAt)%(1000/60);this.render();
+      this.lastRenderedAt=this.lastRenderedAt===undefined?now:now-(now-this.lastRenderedAt)%(1000/60);this.render(now);
       if(this.active&&this.canvas.clientWidth&&this.canvas.clientHeight){
         if(!this.frameStart){this.frameStart=now;this.frameCount=0;}
         if(++this.frameCount>=90){
