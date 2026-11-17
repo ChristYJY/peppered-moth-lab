@@ -3,6 +3,7 @@
 (() => {
   'use strict';
   const TAU = Math.PI * 2;
+  const FLUTTER_CYCLE = 3.2; // seconds, with about two seconds of stillness per cycle
   const SEGMENTS = 32, RINGS = 24;
   const rand = (a, b) => a + Math.random() * (b - a);
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
@@ -112,13 +113,14 @@
       vec3 position=aPosition;
       // Moth batches reuse aColor for phase and width. Captured vertices are zeroed.
       if(uKind>3.5&&uKind<4.5&&uMothTime>=0.0&&aPosition.y>0.0){
-        float beat=mod(uMothTime+aColor.x,8.0);
-        if(beat<.6){
-          float lift=sin(beat*5.235988); // smooth envelope over the .6 s burst
-          float flutter=lift*lift*(.5-.5*cos(beat*31.415927));
+        float beat=mod(uMothTime+aColor.x,${FLUTTER_CYCLE.toFixed(1)});
+        if(beat<1.2){
+          float envelope=smoothstep(0.0,.13,beat)*(1.0-smoothstep(1.07,1.2,beat));
+          float flutter=envelope*(.5-.5*cos(beat*15.707963)); // three strokes at 2.5 Hz
           float wing=max(0.0,abs(aUv.x-.5)-.055)/.445;
           vec3 tangent=cross(aNormal,vec3(0.0,1.0,0.0));
-          position+=aColor.y*flutter*(aNormal*(.17*wing)-tangent*(.045*wing*sign(aUv.x-.5)));
+          // Fold inward as well as lifting, so a head-on viewer sees the wings move.
+          position+=aColor.y*flutter*wing*(aNormal*.265-tangent*(.155*sign(aUv.x-.5)));
         }
       }
       vec4 p=uModel*vec4(position,1.0); vWorld=p.xyz;
@@ -198,7 +200,9 @@
     constructor(canvas){
       this.canvas=canvas;this.theme='pale';this.trees=[];this.moths=[];this.meshes=[];
       this.active=true;
-      this.reducedMotion=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)');
+      // An explicit observation link can opt in without changing device settings.
+      const flutterOptIn=window.location&&new URLSearchParams(window.location.search).get('flutter')==='on';
+      this.reducedMotion=!flutterOptIn&&window.matchMedia?.('(prefers-reduced-motion: reduce)');
       this.renderScale=Math.min(typeof devicePixelRatio==='number'?devicePixelRatio:1,window.matchMedia&&window.matchMedia('(pointer: coarse)').matches?1:1.25);
       this.camera={position:[0,1.85,4],yaw:0,pitch:.1,fov:58};
       this.gl=canvas.getContext('webgl',{alpha:false,antialias:true,powerPreference:'high-performance'});
@@ -469,7 +473,7 @@
           angle=Math.atan2(eye[2]-tree.z,eye[0]-tree.x)+rand(-.25,.25);
         }
         const h=moth.width/2.06,rotation=rand(-.12,.12),cs=Math.cos(rotation),sn=Math.sin(rotation);
-        const motion=[8*((index*.61803398875)%1),moth.width,0];
+        const motion=[FLUTTER_CYCLE*((index*.61803398875)%1),moth.width,0];
         moth.world=surface(tree,angle,y/tree.height,.018);
         moth.normal=norm([Math.cos(angle)*Math.cos(tree.lean),Math.cos(angle)*Math.sin(tree.lean),Math.sin(angle)]);
         const d=data(),put=(u,v)=>{
@@ -536,7 +540,7 @@
       gl.enable(gl.DEPTH_TEST);gl.depthMask(true);gl.useProgram(this.main.program);
       gl.uniformMatrix4fv(this.main.uVP,false,this.viewProjection);gl.uniform3fv(this.main.uCamera,this.camera.position);
       gl.uniform3fv(this.main.uFog,fog);gl.uniform1f(this.main.uTheme,dark?1:0);gl.uniform1i(this.main.uTexture,0);
-      gl.uniform1f(this.main.uMothTime,this.reducedMotion?.matches?-1:(now/1000)%8);
+      gl.uniform1f(this.main.uMothTime,this.reducedMotion?.matches?-1:(now/1000)%FLUTTER_CYCLE);
       gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,this.textures.bark);
       this.draw(this.ground,1);
       gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.depthMask(false);this.draw(this.shadows,3);gl.depthMask(true);gl.disable(gl.BLEND);
